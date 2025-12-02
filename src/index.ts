@@ -70,10 +70,18 @@ app.get('/api/tools', authenticateApiKey, (req: Request, res: Response) => {
       { name: 'search_emails', method: 'POST', path: '/api/emails/search' },
       { name: 'send_email', method: 'POST', path: '/api/emails/send' },
       { name: 'get_labels', method: 'GET', path: '/api/labels' },
+      { name: 'create_label', method: 'POST', path: '/api/labels' },
+      { name: 'delete_label', method: 'DELETE', path: '/api/labels/:id' },
       { name: 'modify_email', method: 'PUT', path: '/api/emails/:id/labels' },
       { name: 'mark_read', method: 'POST', path: '/api/emails/:id/read' },
       { name: 'mark_unread', method: 'POST', path: '/api/emails/:id/unread' },
+      { name: 'star_email', method: 'POST', path: '/api/emails/:id/star' },
+      { name: 'unstar_email', method: 'DELETE', path: '/api/emails/:id/star' },
+      { name: 'archive_email', method: 'POST', path: '/api/emails/:id/archive' },
       { name: 'trash_email', method: 'DELETE', path: '/api/emails/:id' },
+      { name: 'batch_modify', method: 'POST', path: '/api/emails/batch/labels' },
+      { name: 'get_unsubscribe_info', method: 'GET', path: '/api/emails/:id/unsubscribe' },
+      { name: 'find_marketing_emails', method: 'GET', path: '/api/emails/marketing' },
     ],
   });
 });
@@ -216,6 +224,59 @@ app.get('/api/labels', authenticateApiKey, async (req: Request, res: Response) =
   }
 });
 
+// Create a new label
+const createLabelSchema = z.object({
+  name: z.string().min(1, 'Label name is required'),
+  backgroundColor: z.string().optional(),
+  textColor: z.string().optional(),
+});
+
+app.post('/api/labels', authenticateApiKey, async (req: Request, res: Response) => {
+  try {
+    const parsed = createLabelSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request',
+        details: parsed.error.errors,
+      });
+    }
+
+    const label = await gmailService.createLabel(parsed.data.name, {
+      backgroundColor: parsed.data.backgroundColor,
+      textColor: parsed.data.textColor,
+    });
+    res.json({
+      success: true,
+      message: 'Label created successfully',
+      label,
+    });
+  } catch (error) {
+    console.error('Error creating label:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Delete a label
+app.delete('/api/labels/:id', authenticateApiKey, async (req: Request, res: Response) => {
+  try {
+    await gmailService.deleteLabel(req.params.id);
+    res.json({
+      success: true,
+      message: 'Label deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error deleting label:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // Modify email labels
 const modifyLabelsSchema = z.object({
   addLabelIds: z.array(z.string()).optional(),
@@ -296,6 +357,158 @@ app.delete('/api/emails/:id', authenticateApiKey, async (req: Request, res: Resp
     });
   } catch (error) {
     console.error('Error trashing email:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Star email
+app.post('/api/emails/:id/star', authenticateApiKey, async (req: Request, res: Response) => {
+  try {
+    await gmailService.starEmail(req.params.id);
+    res.json({
+      success: true,
+      message: 'Email starred',
+    });
+  } catch (error) {
+    console.error('Error starring email:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Unstar email
+app.delete('/api/emails/:id/star', authenticateApiKey, async (req: Request, res: Response) => {
+  try {
+    await gmailService.unstarEmail(req.params.id);
+    res.json({
+      success: true,
+      message: 'Email unstarred',
+    });
+  } catch (error) {
+    console.error('Error unstarring email:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Archive email
+app.post('/api/emails/:id/archive', authenticateApiKey, async (req: Request, res: Response) => {
+  try {
+    await gmailService.archiveEmail(req.params.id);
+    res.json({
+      success: true,
+      message: 'Email archived',
+    });
+  } catch (error) {
+    console.error('Error archiving email:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Batch modify emails
+const batchModifySchema = z.object({
+  messageIds: z.array(z.string()).min(1, 'At least one message ID is required'),
+  addLabelIds: z.array(z.string()).optional(),
+  removeLabelIds: z.array(z.string()).optional(),
+});
+
+app.post('/api/emails/batch/labels', authenticateApiKey, async (req: Request, res: Response) => {
+  try {
+    const parsed = batchModifySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request',
+        details: parsed.error.errors,
+      });
+    }
+
+    await gmailService.batchModifyEmails(
+      parsed.data.messageIds,
+      parsed.data.addLabelIds,
+      parsed.data.removeLabelIds
+    );
+
+    res.json({
+      success: true,
+      message: `Modified ${parsed.data.messageIds.length} emails`,
+    });
+  } catch (error) {
+    console.error('Error batch modifying emails:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Get unsubscribe info for an email
+app.get('/api/emails/:id/unsubscribe', authenticateApiKey, async (req: Request, res: Response) => {
+  try {
+    const result = await gmailService.getEmailWithUnsubscribe(req.params.id);
+    if (!result.email) {
+      return res.status(404).json({
+        success: false,
+        error: 'Email not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      email: {
+        id: result.email.id,
+        subject: result.email.subject,
+        from: result.email.from,
+      },
+      unsubscribeLinks: result.unsubscribeLinks,
+      unsubscribeEmail: result.unsubscribeEmail,
+      hasUnsubscribe: result.unsubscribeLinks.length > 0 || result.unsubscribeEmail !== null,
+    });
+  } catch (error) {
+    console.error('Error getting unsubscribe info:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Find marketing/promotional emails
+app.get('/api/emails/marketing', authenticateApiKey, async (req: Request, res: Response) => {
+  try {
+    const maxResults = parseInt(req.query.maxResults as string) || 10;
+    const emails = await gmailService.findMarketingEmails(maxResults);
+
+    // Get unsubscribe info for each email
+    const emailsWithUnsubscribe = await Promise.all(
+      emails.map(async (email) => {
+        const unsubInfo = await gmailService.getEmailWithUnsubscribe(email.id);
+        return {
+          ...email,
+          unsubscribeLinks: unsubInfo.unsubscribeLinks,
+          unsubscribeEmail: unsubInfo.unsubscribeEmail,
+          hasUnsubscribe: unsubInfo.unsubscribeLinks.length > 0 || unsubInfo.unsubscribeEmail !== null,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      count: emailsWithUnsubscribe.length,
+      emails: emailsWithUnsubscribe,
+    });
+  } catch (error) {
+    console.error('Error finding marketing emails:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -384,6 +597,67 @@ app.post('/api/call', authenticateApiKey, async (req: Request, res: Response) =>
         }
         await gmailService.trashEmail(args.messageId);
         result = { message: 'Moved to trash' };
+        break;
+
+      case 'create_label':
+        if (!args?.name) {
+          return res.status(400).json({ success: false, error: 'name is required' });
+        }
+        result = await gmailService.createLabel(args.name, {
+          backgroundColor: args.backgroundColor,
+          textColor: args.textColor,
+        });
+        break;
+
+      case 'delete_label':
+        if (!args?.labelId) {
+          return res.status(400).json({ success: false, error: 'labelId is required' });
+        }
+        await gmailService.deleteLabel(args.labelId);
+        result = { message: 'Label deleted' };
+        break;
+
+      case 'star_email':
+        if (!args?.messageId) {
+          return res.status(400).json({ success: false, error: 'messageId is required' });
+        }
+        await gmailService.starEmail(args.messageId);
+        result = { message: 'Email starred' };
+        break;
+
+      case 'unstar_email':
+        if (!args?.messageId) {
+          return res.status(400).json({ success: false, error: 'messageId is required' });
+        }
+        await gmailService.unstarEmail(args.messageId);
+        result = { message: 'Email unstarred' };
+        break;
+
+      case 'archive_email':
+        if (!args?.messageId) {
+          return res.status(400).json({ success: false, error: 'messageId is required' });
+        }
+        await gmailService.archiveEmail(args.messageId);
+        result = { message: 'Email archived' };
+        break;
+
+      case 'batch_modify':
+        if (!args?.messageIds || !Array.isArray(args.messageIds)) {
+          return res.status(400).json({ success: false, error: 'messageIds array is required' });
+        }
+        await gmailService.batchModifyEmails(args.messageIds, args.addLabelIds, args.removeLabelIds);
+        result = { message: `Modified ${args.messageIds.length} emails` };
+        break;
+
+      case 'get_unsubscribe_info':
+        if (!args?.messageId) {
+          return res.status(400).json({ success: false, error: 'messageId is required' });
+        }
+        result = await gmailService.getEmailWithUnsubscribe(args.messageId);
+        break;
+
+      case 'find_marketing_emails':
+        result = await gmailService.findMarketingEmails(args?.maxResults || 10);
         break;
 
       default:
