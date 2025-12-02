@@ -7,7 +7,11 @@ HTTP REST API server for Gmail integration - deployable to Railway, Render, or a
 - 🔐 **OAuth via Environment Variables** - No file-based credential storage
 - 🔄 **Automatic Token Refresh** - Handles token expiration automatically
 - 🛡️ **API Key Protection** - Secure your endpoints in production
-- 📧 **Full Gmail Operations** - List, search, send, labels, and more
+- 📧 **Full Gmail Operations** - List, search, send, reply, forward, drafts, and more
+- 📎 **Attachment Support** - Download email attachments
+- 🧵 **Thread Support** - Get full email conversations
+- ✉️ **Draft Management** - Create, update, and send drafts
+- 🏖️ **Vacation Responder** - Configure auto-reply settings
 - 🐳 **Docker Ready** - Deploy anywhere with Docker support
 - 🤖 **Bot-Friendly** - Generic `/api/call` endpoint for integrations
 
@@ -144,6 +148,170 @@ POST /api/emails/:id/unread
 DELETE /api/emails/:id
 ```
 
+#### Restore from Trash
+```http
+POST /api/emails/:id/untrash
+```
+
+#### Permanently Delete Email
+```http
+DELETE /api/emails/:id/permanent
+```
+
+#### Reply to Email
+```http
+POST /api/emails/:id/reply
+Content-Type: application/json
+
+{
+  "body": "Thanks for your message!",
+  "htmlBody": "<p>Thanks for your message!</p>",
+  "replyAll": false
+}
+```
+
+#### Forward Email
+```http
+POST /api/emails/:id/forward
+Content-Type: application/json
+
+{
+  "to": ["recipient@example.com"],
+  "body": "FYI - see below",
+  "cc": ["cc@example.com"]
+}
+```
+
+#### Get Email Thread
+```http
+GET /api/threads/:id
+```
+
+Returns all messages in a conversation thread.
+
+#### Get Unread Count
+```http
+GET /api/emails/unread/count
+```
+
+#### Get Email with Attachments
+```http
+GET /api/emails/:id/attachments
+```
+
+Returns email metadata plus attachment information (filename, size, mimeType, attachmentId).
+
+#### Download Attachment
+```http
+GET /api/emails/:id/attachments/:attachmentId
+```
+
+Returns base64-encoded attachment data.
+
+### Drafts
+
+#### List Drafts
+```http
+GET /api/drafts?maxResults=10
+```
+
+#### Get Draft
+```http
+GET /api/drafts/:id
+```
+
+#### Create Draft
+```http
+POST /api/drafts
+Content-Type: application/json
+
+{
+  "to": ["recipient@example.com"],
+  "subject": "Draft Subject",
+  "body": "Draft body text",
+  "cc": ["cc@example.com"],
+  "htmlBody": "<p>HTML draft body</p>"
+}
+```
+
+#### Update Draft
+```http
+PUT /api/drafts/:id
+Content-Type: application/json
+
+{
+  "to": ["recipient@example.com"],
+  "subject": "Updated Subject",
+  "body": "Updated body"
+}
+```
+
+#### Delete Draft
+```http
+DELETE /api/drafts/:id
+```
+
+#### Send Draft
+```http
+POST /api/drafts/:id/send
+```
+
+### Labels
+
+#### Get Labels
+```http
+GET /api/labels
+```
+
+#### Create Label
+```http
+POST /api/labels
+Content-Type: application/json
+
+{
+  "name": "My Label"
+}
+```
+
+#### Update Label
+```http
+PUT /api/labels/:id
+Content-Type: application/json
+
+{
+  "name": "New Label Name"
+}
+```
+
+#### Delete Label
+```http
+DELETE /api/labels/:id
+```
+
+### Settings
+
+#### Get Vacation Responder Settings
+```http
+GET /api/settings/vacation
+```
+
+#### Set Vacation Responder
+```http
+PUT /api/settings/vacation
+Content-Type: application/json
+
+{
+  "enableAutoReply": true,
+  "responseSubject": "Out of Office",
+  "responseBodyPlainText": "I am currently out of the office.",
+  "responseBodyHtml": "<p>I am currently out of the office.</p>",
+  "restrictToContacts": false,
+  "restrictToDomain": false,
+  "startTime": 1704067200000,
+  "endTime": 1704672000000
+}
+```
+
 ### Generic Tool Call (for Bots)
 
 ```http
@@ -158,16 +326,55 @@ Content-Type: application/json
 }
 ```
 
-Available tools:
+Available tools (40+):
+
+**Email Operations:**
 - `list_emails` - List emails (`query`, `maxResults`)
 - `get_email` - Get single email (`messageId`)
 - `search_emails` - Search emails (`query`, `maxResults`)
 - `send_email` - Send email (`to`, `subject`, `body`, `cc`, `bcc`, `htmlBody`)
-- `get_labels` - Get all labels
+- `reply_to_email` - Reply to email (`messageId`, `body`, `htmlBody`, `replyAll`)
+- `forward_email` - Forward email (`messageId`, `to`, `body`, `cc`, `bcc`)
 - `modify_email` - Modify labels (`messageId`, `addLabelIds`, `removeLabelIds`)
 - `mark_read` - Mark as read (`messageId`)
 - `mark_unread` - Mark as unread (`messageId`)
 - `trash_email` - Move to trash (`messageId`)
+- `untrash_email` - Restore from trash (`messageId`)
+- `delete_email` - Permanently delete (`messageId`)
+- `star_email` - Star email (`messageId`)
+- `unstar_email` - Unstar email (`messageId`)
+- `archive_email` - Archive email (`messageId`)
+- `batch_modify_emails` - Modify multiple emails (`messageIds`, `addLabelIds`, `removeLabelIds`)
+- `get_unread_count` - Get unread count
+
+**Threads:**
+- `get_thread` - Get email thread (`threadId`)
+
+**Attachments:**
+- `get_email_attachments` - Get attachment info (`messageId`)
+- `download_attachment` - Download attachment (`messageId`, `attachmentId`)
+
+**Labels:**
+- `get_labels` - Get all labels
+- `create_label` - Create label (`name`)
+- `update_label` - Update label (`labelId`, `name`)
+- `delete_label` - Delete label (`labelId`)
+
+**Drafts:**
+- `list_drafts` - List drafts (`maxResults`)
+- `get_draft` - Get draft (`draftId`)
+- `create_draft` - Create draft (`to`, `subject`, `body`, `cc`, `bcc`, `htmlBody`)
+- `update_draft` - Update draft (`draftId`, `to`, `subject`, `body`, `cc`, `bcc`, `htmlBody`)
+- `delete_draft` - Delete draft (`draftId`)
+- `send_draft` - Send draft (`draftId`)
+
+**Settings:**
+- `get_vacation_settings` - Get vacation responder settings
+- `set_vacation_settings` - Set vacation responder (`enableAutoReply`, `responseSubject`, `responseBodyPlainText`, etc.)
+
+**Marketing:**
+- `find_marketing_emails` - Find marketing/unsubscribe emails (`maxResults`)
+- `get_unsubscribe_info` - Get unsubscribe info (`messageId`)
 
 ## Gmail Search Syntax
 
